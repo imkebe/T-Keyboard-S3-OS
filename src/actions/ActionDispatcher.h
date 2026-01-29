@@ -4,6 +4,7 @@
 
 #include <Arduino.h>
 
+#include "ActionStatus.h"
 #include "../../libraries/T-Keyboard_S3_Drive/ConfigSchema.h"
 
 class ActionRegistry;
@@ -13,9 +14,9 @@ class ActionDispatcher
 public:
     explicit ActionDispatcher(const ActionRegistry &registry);
 
-    void DispatchKey(const KeyConfig &key) const;
-    void DispatchActions(const std::vector<ActionConfig> &actions) const;
-    void DispatchAction(const ActionConfig &action) const;
+    ActionStatus DispatchKey(const KeyConfig &key) const;
+    ActionStatus DispatchActions(const std::vector<ActionConfig> &actions) const;
+    ActionStatus DispatchAction(const ActionConfig &action) const;
 
 private:
     const ActionRegistry &registry_;
