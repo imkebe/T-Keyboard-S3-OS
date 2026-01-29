@@ -1,0 +1,61 @@
+# T-Keyboard S3 Configuration Schema (v1)
+
+This document defines the versioned YAML configuration schema used to describe key layouts and actions.
+
+## Root Object
+
+```yaml
+config:
+  version: 1
+keys:
+  - id: "key-1"
+    key_index: 0
+    label: "Layer"
+    action_id: "layer-1"
+    enabled: true
+actions:
+  - id: "layer-1"
+    type: "layer"
+    payload: "fn"
+    enabled: true
+```
+
+### `config`
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `version` | integer | ✅ | Schema version. Only `1` is currently supported. |
+
+### `keys[]`
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | string | ✅ | Unique identifier for the key mapping. |
+| `key_index` | integer | ❌ | Zero-based hardware key index (0-255). Defaults to `0`. |
+| `label` | string | ❌ | Human-friendly display name. |
+| `action_id` | string | ❌ | Reference to an `actions[].id`. If omitted, the key has no bound action. |
+| `enabled` | boolean | ❌ | Enables or disables the key mapping. Defaults to `true`. |
+
+### `actions[]`
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `id` | string | ✅ | Unique identifier for the action. |
+| `type` | string | ✅ | Action type. Allowed values: `macro`, `media`, `keycode`, `layer`, `system`, `custom`. |
+| `payload` | string | ❌ | Action payload, such as a macro string or keycode. |
+| `enabled` | boolean | ❌ | Enables or disables the action. Defaults to `true`. |
+
+## Validation Rules
+
+- `config.version` must be `1`.
+- `keys[].id` values must be unique and non-empty.
+- `actions[].id` values must be unique and non-empty.
+- `actions[].type` must be one of the allowed values.
+- If `keys[].action_id` is set, it must reference an existing `actions[].id`.
+
+## Data Model Alignment
+
+The schema maps directly to the following C++ structs:
+
+- `ConfigRoot` → root object containing `version`, `keys`, and `actions`.
+- `KeyConfig` → entries in `keys[]`.
+- `ActionConfig` → entries in `actions[]`.
+
+Validation behavior is implemented in the `Validate()` methods on each struct, with additional cross-field checks in `ConfigRoot::Validate()`.
