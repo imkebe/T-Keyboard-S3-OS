@@ -214,6 +214,26 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
             {
                 state.current_action.payload = value;
             }
+            else if (field == "delay_ms")
+            {
+                uint32_t delay_ms = 0;
+                if (!parseUInt32(value, delay_ms))
+                {
+                    errors.push_back("action.delay_ms must be an integer");
+                    return false;
+                }
+                state.current_action.delay_ms = delay_ms;
+            }
+            else if (field == "repeat")
+            {
+                uint32_t repeat = 0;
+                if (!parseUInt32(value, repeat))
+                {
+                    errors.push_back("action.repeat must be an integer");
+                    return false;
+                }
+                state.current_action.repeat = repeat;
+            }
             else if (field == "enabled")
             {
                 bool enabled = true;

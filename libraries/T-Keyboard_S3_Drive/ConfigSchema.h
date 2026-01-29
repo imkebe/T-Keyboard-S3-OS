@@ -27,7 +27,10 @@ struct ActionConfig
     std::string id;
     std::string type;
     std::string payload;
+    uint32_t delay_ms = 0;
+    uint32_t repeat = 1;
     bool enabled = true;
+    std::vector<ActionConfig> actions;
 
     ValidationResult Validate() const;
 };
@@ -37,6 +40,7 @@ struct KeyConfig
     std::string id;
     std::string label;
     std::string action_id;
+    std::vector<ActionConfig> actions;
     uint8_t key_index = 0;
     bool enabled = true;
 

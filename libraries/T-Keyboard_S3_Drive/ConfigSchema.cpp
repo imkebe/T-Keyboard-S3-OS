@@ -10,6 +10,10 @@
 const std::unordered_set<std::string> &ConfigRoot::AllowedActionTypes()
 {
     static const std::unordered_set<std::string> types{
+        "hid_key",
+        "ble_key",
+        "http_request",
+        "composite",
         "macro",
         "media",
         "keycode",
