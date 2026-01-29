@@ -6,6 +6,7 @@
 
 #include <Arduino.h>
 
+#include "ActionStatus.h"
 #include "../../libraries/T-Keyboard_S3_Drive/ConfigSchema.h"
 
 class ActionDispatcher;
@@ -14,17 +15,17 @@ class USBHIDKeyboard;
 class ActionRegistry
 {
 public:
-    using Handler = std::function<void(const ActionConfig &, const ActionDispatcher &)>;
+    using Handler = std::function<ActionStatus(const ActionConfig &, const ActionDispatcher &)>;
 
     ActionRegistry();
 
     void Register(const std::string &type, Handler handler);
     void RegisterDefault(Handler handler);
     void SetUsbHidKeyboard(USBHIDKeyboard *keyboard);
-    void Dispatch(const ActionConfig &action, const ActionDispatcher &dispatcher) const;
+    ActionStatus Dispatch(const ActionConfig &action, const ActionDispatcher &dispatcher) const;
 
 private:
-    static void DefaultUnknownHandler(const ActionConfig &action, const ActionDispatcher &dispatcher);
+    static ActionStatus DefaultUnknownHandler(const ActionConfig &action, const ActionDispatcher &dispatcher);
 
     std::unordered_map<std::string, Handler> handlers_{};
     Handler default_handler_{};

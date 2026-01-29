@@ -6,38 +6,49 @@ ActionDispatcher::ActionDispatcher(const ActionRegistry &registry) : registry_(r
 {
 }
 
-void ActionDispatcher::DispatchKey(const KeyConfig &key) const
+ActionStatus ActionDispatcher::DispatchKey(const KeyConfig &key) const
 {
     if (!key.enabled)
     {
-        return;
+        return ActionStatus::Ok();
     }
 
-    DispatchActions(key.actions);
+    return DispatchActions(key.actions);
 }
 
-void ActionDispatcher::DispatchActions(const std::vector<ActionConfig> &actions) const
+ActionStatus ActionDispatcher::DispatchActions(const std::vector<ActionConfig> &actions) const
 {
+    ActionStatus result = ActionStatus::Ok();
     for (const auto &action : actions)
     {
-        DispatchAction(action);
+        result = DispatchAction(action);
+        if (!result.success)
+        {
+            return result;
+        }
     }
+    return result;
 }
 
-void ActionDispatcher::DispatchAction(const ActionConfig &action) const
+ActionStatus ActionDispatcher::DispatchAction(const ActionConfig &action) const
 {
     if (!action.enabled)
     {
-        return;
+        return ActionStatus::Ok();
     }
 
     uint32_t repeat = action.repeat == 0 ? 1 : action.repeat;
     for (uint32_t count = 0; count < repeat; ++count)
     {
-        registry_.Dispatch(action, *this);
+        ActionStatus result = registry_.Dispatch(action, *this);
+        if (!result.success)
+        {
+            return result;
+        }
         if (action.delay_ms > 0)
         {
             delay(action.delay_ms);
         }
     }
+    return ActionStatus::Ok();
 }
