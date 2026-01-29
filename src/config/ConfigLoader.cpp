@@ -1,0 +1,380 @@
+#include "ConfigLoader.h"
+
+#include <cstdlib>
+#include <sstream>
+
+ConfigLoader::ConfigLoader() = default;
+
+const ConfigRoot &ConfigLoader::config() const
+{
+    return config_;
+}
+
+const std::string &ConfigLoader::lastError() const
+{
+    return last_error_;
+}
+
+bool ConfigLoader::reloadConfig()
+{
+    std::vector<std::string> errors;
+    ConfigRoot loaded;
+
+    if (!loadFromSd(loaded, errors) && !loadFromInternalFs(loaded, errors))
+    {
+        last_error_ = "Failed to load /config.yaml from SD or internal FS";
+        errors.push_back(last_error_);
+        logErrors(errors);
+        return false;
+    }
+
+    auto validation = loaded.Validate();
+    if (!validation.Ok())
+    {
+        last_error_ = "Config validation failed";
+        errors.insert(errors.end(), validation.errors.begin(), validation.errors.end());
+        logErrors(errors);
+        return false;
+    }
+
+    config_ = loaded;
+    last_error_.clear();
+    return true;
+}
+
+bool ConfigLoader::loadFromSd(ConfigRoot &out_config, std::vector<std::string> &errors)
+{
+    if (!SD.begin())
+    {
+        errors.push_back("SD.begin failed while looking for /config.yaml");
+        return false;
+    }
+
+    if (loadFromFile(SD, "/config.yaml", out_config, errors))
+    {
+        return true;
+    }
+
+    errors.push_back("/config.yaml not found on SD");
+    return false;
+}
+
+bool ConfigLoader::loadFromInternalFs(ConfigRoot &out_config, std::vector<std::string> &errors)
+{
+    if (!SPIFFS.begin())
+    {
+        errors.push_back("SPIFFS.begin failed while looking for /config.yaml");
+        return false;
+    }
+
+    if (loadFromFile(SPIFFS, "/config.yaml", out_config, errors))
+    {
+        return true;
+    }
+
+    errors.push_back("/config.yaml not found on internal FS");
+    return false;
+}
+
+bool ConfigLoader::loadFromFile(fs::FS &fs, const char *path, ConfigRoot &out_config, std::vector<std::string> &errors)
+{
+    File file = fs.open(path, "r");
+    if (!file)
+    {
+        return false;
+    }
+
+    ParseState state;
+    while (file.available())
+    {
+        String line = file.readStringUntil('\n');
+        std::string line_str = line.c_str();
+        if (!parseLine(line_str, state, out_config, errors))
+        {
+            return false;
+        }
+    }
+
+    finalizeParse(state, out_config);
+    return true;
+}
+
+bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigRoot &out_config, std::vector<std::string> &errors)
+{
+    std::string trimmed = trim(line);
+    if (trimmed.empty() || trimmed.front() == '#')
+    {
+        return true;
+    }
+
+    if (trimmed == "config:")
+    {
+        finalizeParse(state, out_config);
+        state.section = Section::Config;
+        return true;
+    }
+    if (trimmed == "keys:")
+    {
+        finalizeParse(state, out_config);
+        state.section = Section::Keys;
+        return true;
+    }
+    if (trimmed == "actions:")
+    {
+        finalizeParse(state, out_config);
+        state.section = Section::Actions;
+        return true;
+    }
+
+    auto assignField = [&](const std::string &field, const std::string &value) {
+        if (state.section == Section::Config || state.section == Section::None)
+        {
+            if (field == "version")
+            {
+                uint32_t version = 0;
+                if (!parseUInt32(value, version))
+                {
+                    errors.push_back("config.version must be an integer");
+                    return false;
+                }
+                out_config.version = version;
+                return true;
+            }
+
+            errors.push_back("Unknown config field: " + field);
+            return false;
+        }
+
+        if (state.section == Section::Keys)
+        {
+            if (!state.has_current_key)
+            {
+                state.current_key = KeyConfig{};
+                state.has_current_key = true;
+            }
+
+            if (field == "id")
+            {
+                state.current_key.id = value;
+            }
+            else if (field == "label")
+            {
+                state.current_key.label = value;
+            }
+            else if (field == "action_id")
+            {
+                state.current_key.action_id = value;
+            }
+            else if (field == "key_index")
+            {
+                uint32_t index = 0;
+                if (!parseUInt32(value, index))
+                {
+                    errors.push_back("key.key_index must be an integer");
+                    return false;
+                }
+                state.current_key.key_index = static_cast<uint8_t>(index);
+            }
+            else if (field == "enabled")
+            {
+                bool enabled = true;
+                if (!parseBool(value, enabled))
+                {
+                    errors.push_back("key.enabled must be true or false");
+                    return false;
+                }
+                state.current_key.enabled = enabled;
+            }
+            else
+            {
+                errors.push_back("Unknown key field: " + field);
+                return false;
+            }
+
+            return true;
+        }
+
+        if (state.section == Section::Actions)
+        {
+            if (!state.has_current_action)
+            {
+                state.current_action = ActionConfig{};
+                state.has_current_action = true;
+            }
+
+            if (field == "id")
+            {
+                state.current_action.id = value;
+            }
+            else if (field == "type")
+            {
+                state.current_action.type = value;
+            }
+            else if (field == "payload")
+            {
+                state.current_action.payload = value;
+            }
+            else if (field == "enabled")
+            {
+                bool enabled = true;
+                if (!parseBool(value, enabled))
+                {
+                    errors.push_back("action.enabled must be true or false");
+                    return false;
+                }
+                state.current_action.enabled = enabled;
+            }
+            else
+            {
+                errors.push_back("Unknown action field: " + field);
+                return false;
+            }
+
+            return true;
+        }
+
+        errors.push_back("Unexpected YAML section");
+        return false;
+    };
+
+    if (trimmed.rfind("-", 0) == 0)
+    {
+        std::string remainder = trim(trimmed.substr(1));
+        if (state.section == Section::Keys)
+        {
+            if (state.has_current_key)
+            {
+                out_config.keys.push_back(state.current_key);
+                state.current_key = KeyConfig{};
+            }
+            state.has_current_key = true;
+        }
+        else if (state.section == Section::Actions)
+        {
+            if (state.has_current_action)
+            {
+                out_config.actions.push_back(state.current_action);
+                state.current_action = ActionConfig{};
+            }
+            state.has_current_action = true;
+        }
+        else
+        {
+            errors.push_back("List item found outside keys/actions section");
+            return false;
+        }
+
+        if (!remainder.empty())
+        {
+            auto pos = remainder.find(':');
+            if (pos == std::string::npos)
+            {
+                errors.push_back("Malformed list entry: " + remainder);
+                return false;
+            }
+            std::string field = trim(remainder.substr(0, pos));
+            std::string value = trim(remainder.substr(pos + 1));
+            value = stripQuotes(value);
+            return assignField(field, value);
+        }
+
+        return true;
+    }
+
+    auto pos = trimmed.find(':');
+    if (pos == std::string::npos)
+    {
+        errors.push_back("Malformed line: " + trimmed);
+        return false;
+    }
+
+    std::string field = trim(trimmed.substr(0, pos));
+    std::string value = trim(trimmed.substr(pos + 1));
+    value = stripQuotes(value);
+    return assignField(field, value);
+}
+
+void ConfigLoader::finalizeParse(ParseState &state, ConfigRoot &out_config)
+{
+    if (state.has_current_key)
+    {
+        out_config.keys.push_back(state.current_key);
+        state.has_current_key = false;
+        state.current_key = KeyConfig{};
+    }
+    if (state.has_current_action)
+    {
+        out_config.actions.push_back(state.current_action);
+        state.has_current_action = false;
+        state.current_action = ActionConfig{};
+    }
+}
+
+std::string ConfigLoader::trim(const std::string &value)
+{
+    const char *whitespace = " \t\n\r";
+    const auto start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos)
+    {
+        return "";
+    }
+    const auto end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
+}
+
+std::string ConfigLoader::stripQuotes(const std::string &value)
+{
+    if (value.size() < 2)
+    {
+        return value;
+    }
+
+    char quote = value.front();
+    if ((quote == '\"' || quote == '\'') && value.back() == quote)
+    {
+        return value.substr(1, value.size() - 2);
+    }
+
+    return value;
+}
+
+bool ConfigLoader::parseBool(const std::string &value, bool &out)
+{
+    if (value == "true")
+    {
+        out = true;
+        return true;
+    }
+    if (value == "false")
+    {
+        out = false;
+        return true;
+    }
+    return false;
+}
+
+bool ConfigLoader::parseUInt32(const std::string &value, uint32_t &out)
+{
+    if (value.empty())
+    {
+        return false;
+    }
+
+    char *end = nullptr;
+    unsigned long parsed = std::strtoul(value.c_str(), &end, 10);
+    if (end == value.c_str() || *end != '\0')
+    {
+        return false;
+    }
+
+    out = static_cast<uint32_t>(parsed);
+    return true;
+}
+
+void ConfigLoader::logErrors(const std::vector<std::string> &errors) const
+{
+    for (const auto &error : errors)
+    {
+        Serial.println(String("ConfigLoader: ") + error.c_str());
+    }
+}
