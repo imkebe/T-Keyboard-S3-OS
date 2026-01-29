@@ -161,6 +161,10 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
             {
                 state.current_key.label = value;
             }
+            else if (field == "icon")
+            {
+                state.current_key.icon = value;
+            }
             else if (field == "action_id")
             {
                 state.current_key.action_id = value;

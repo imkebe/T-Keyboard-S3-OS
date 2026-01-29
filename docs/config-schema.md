@@ -11,6 +11,7 @@ keys:
   - id: "key-1"
     key_index: 0
     label: "Layer"
+    icon: "sd:/icons/layer.png"
     action_id: "layer-1"
     enabled: true
 actions:
@@ -31,6 +32,7 @@ actions:
 | `id` | string | ✅ | Unique identifier for the key mapping. |
 | `key_index` | integer | ❌ | Zero-based hardware key index (0-255). Defaults to `0`. |
 | `label` | string | ❌ | Human-friendly display name. |
+| `icon` | string | ❌ | Path to an icon asset on SD (`sd:/...`) or internal FS (`fs:/...`). |
 | `action_id` | string | ❌ | Reference to an `actions[].id`. If omitted, the key has no bound action. |
 | `enabled` | boolean | ❌ | Enables or disables the key mapping. Defaults to `true`. |
 

@@ -39,6 +39,7 @@ struct KeyConfig
 {
     std::string id;
     std::string label;
+    std::string icon;
     std::string action_id;
     std::vector<ActionConfig> actions;
     uint8_t key_index = 0;

@@ -12,6 +12,9 @@
 #include "pin_config.h"
 #include "T-Keyboard_S3_Drive.h"
 #include "FastLED.h"
+#include "../../src/config/ConfigLoader.h"
+
+#include <array>
 
 // How many leds in your strip?
 #define NUM_LEDS 4
@@ -29,6 +32,229 @@ static lv_disp_draw_buf_t draw_buf;
 static lv_color_t buf[screenWidth * screenHeight / 10];
 
 TFT_eSPI tft = TFT_eSPI(screenWidth, screenHeight); /* TFT instance */
+
+namespace
+{
+constexpr const char *kMissingAssetLabel = LV_SYMBOL_WARNING "\nMissing";
+constexpr uint8_t kDisplayCount = 4;
+
+struct KeyDisplayData
+{
+    std::string label;
+    std::string icon_path;
+    bool icon_available = false;
+};
+
+struct FsDriverContext
+{
+    fs::FS *fs = nullptr;
+};
+
+FsDriverContext sd_context;
+FsDriverContext spiffs_context;
+
+bool StartsWith(const std::string &value, const std::string &prefix)
+{
+    if (value.size() < prefix.size())
+    {
+        return false;
+    }
+    return value.compare(0, prefix.size(), prefix) == 0;
+}
+
+bool EnsureLeadingSlash(std::string &path)
+{
+    if (path.empty())
+    {
+        return false;
+    }
+    if (path.front() != '/')
+    {
+        path.insert(path.begin(), '/');
+    }
+    return true;
+}
+
+bool FileExists(fs::FS &fs, const char *path)
+{
+    File file = fs.open(path, "r");
+    if (!file)
+    {
+        return false;
+    }
+    file.close();
+    return true;
+}
+
+void *LvglFsOpen(lv_fs_drv_t *drv, const char *path, lv_fs_mode_t mode)
+{
+    auto *context = static_cast<FsDriverContext *>(drv->user_data);
+    if (!context || !context->fs)
+    {
+        return nullptr;
+    }
+    const char *open_mode = (mode & LV_FS_MODE_WR) ? "w" : "r";
+    File file = context->fs->open(path, open_mode);
+    if (!file)
+    {
+        return nullptr;
+    }
+    return new File(file);
+}
+
+lv_fs_res_t LvglFsClose(lv_fs_drv_t *, void *file_p)
+{
+    auto *file = static_cast<File *>(file_p);
+    if (!file)
+    {
+        return LV_FS_RES_FS_ERR;
+    }
+    file->close();
+    delete file;
+    return LV_FS_RES_OK;
+}
+
+lv_fs_res_t LvglFsRead(lv_fs_drv_t *, void *file_p, void *buf, uint32_t btr, uint32_t *br)
+{
+    auto *file = static_cast<File *>(file_p);
+    if (!file)
+    {
+        return LV_FS_RES_FS_ERR;
+    }
+    *br = file->read(static_cast<uint8_t *>(buf), btr);
+    return LV_FS_RES_OK;
+}
+
+lv_fs_res_t LvglFsSeek(lv_fs_drv_t *, void *file_p, uint32_t pos, lv_fs_whence_t whence)
+{
+    auto *file = static_cast<File *>(file_p);
+    if (!file)
+    {
+        return LV_FS_RES_FS_ERR;
+    }
+    uint32_t target = pos;
+    if (whence == LV_FS_SEEK_CUR)
+    {
+        target = file->position() + pos;
+    }
+    else if (whence == LV_FS_SEEK_END)
+    {
+        target = file->size() + pos;
+    }
+    if (!file->seek(target))
+    {
+        return LV_FS_RES_FS_ERR;
+    }
+    return LV_FS_RES_OK;
+}
+
+lv_fs_res_t LvglFsTell(lv_fs_drv_t *, void *file_p, uint32_t *pos)
+{
+    auto *file = static_cast<File *>(file_p);
+    if (!file)
+    {
+        return LV_FS_RES_FS_ERR;
+    }
+    *pos = file->position();
+    return LV_FS_RES_OK;
+}
+
+void RegisterLvglFsDriver(char letter, FsDriverContext &context, lv_fs_drv_t &driver)
+{
+    lv_fs_drv_init(&driver);
+    driver.letter = letter;
+    driver.user_data = &context;
+    driver.open_cb = LvglFsOpen;
+    driver.close_cb = LvglFsClose;
+    driver.read_cb = LvglFsRead;
+    driver.seek_cb = LvglFsSeek;
+    driver.tell_cb = LvglFsTell;
+    lv_fs_drv_register(&driver);
+}
+
+bool ResolveIconPath(const std::string &icon, std::string &out_lvgl_path, bool sd_ready, bool spiffs_ready)
+{
+    if (icon.empty())
+    {
+        return false;
+    }
+
+    std::string path = icon;
+    if (StartsWith(path, "S:") || StartsWith(path, "F:"))
+    {
+        out_lvgl_path = path;
+        return true;
+    }
+
+    char drive_letter = '\0';
+    fs::FS *target_fs = nullptr;
+
+    if (StartsWith(path, "sd:"))
+    {
+        drive_letter = 'S';
+        path = path.substr(3);
+        target_fs = sd_ready ? &SD : nullptr;
+    }
+    else if (StartsWith(path, "fs:") || StartsWith(path, "spiffs:"))
+    {
+        drive_letter = 'F';
+        path = path.substr(path.find(':') + 1);
+        target_fs = spiffs_ready ? &SPIFFS : nullptr;
+    }
+
+    if (drive_letter == '\0' || !target_fs)
+    {
+        return false;
+    }
+
+    if (!EnsureLeadingSlash(path))
+    {
+        return false;
+    }
+
+    if (!FileExists(*target_fs, path.c_str()))
+    {
+        return false;
+    }
+
+    out_lvgl_path = std::string(1, drive_letter) + ":" + path;
+    return true;
+}
+
+void RenderKeyDisplay(uint8_t screen_index, const KeyDisplayData &data)
+{
+    static const uint8_t kScreenMap[kDisplayCount] = {
+        N085_Screen_1,
+        N085_Screen_2,
+        N085_Screen_3,
+        N085_Screen_4,
+    };
+
+    N085_Screen_Set(kScreenMap[screen_index]);
+
+    lv_obj_t *root = lv_scr_act();
+    lv_obj_clean(root);
+    lv_obj_set_style_bg_color(root, lv_color_hex(0x0B0B0B), LV_PART_MAIN);
+
+    if (data.icon_available && !data.icon_path.empty())
+    {
+        lv_obj_t *img = lv_img_create(root);
+        lv_img_set_src(img, data.icon_path.c_str());
+        lv_obj_align(img, LV_ALIGN_CENTER, 0, -6);
+    }
+    else
+    {
+        lv_obj_t *missing = lv_label_create(root);
+        lv_label_set_text(missing, kMissingAssetLabel);
+        lv_obj_align(missing, LV_ALIGN_CENTER, 0, -6);
+    }
+
+    lv_obj_t *label = lv_label_create(root);
+    const char *label_text = data.label.empty() ? "Key" : data.label.c_str();
+    lv_label_set_text(label, label_text);
+    lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -6);
+}
+} // namespace
 
 void WS2812B_KEY_Lvgl_Loop(void)
 {
@@ -309,6 +535,61 @@ void setup()
     lv_style_img();
 
     lv_example_anim_1();
+
+    static lv_fs_drv_t sd_driver;
+    static lv_fs_drv_t spiffs_driver;
+    bool sd_ready = SD.begin();
+    bool spiffs_ready = SPIFFS.begin();
+    if (sd_ready)
+    {
+        sd_context.fs = &SD;
+        RegisterLvglFsDriver('S', sd_context, sd_driver);
+    }
+    if (spiffs_ready)
+    {
+        spiffs_context.fs = &SPIFFS;
+        RegisterLvglFsDriver('F', spiffs_context, spiffs_driver);
+    }
+
+    std::array<KeyDisplayData, kDisplayCount> displays;
+    for (uint8_t i = 0; i < kDisplayCount; ++i)
+    {
+        displays[i].label = "Key " + std::to_string(i + 1);
+    }
+
+    ConfigLoader config_loader;
+    if (config_loader.reloadConfig())
+    {
+        const auto &config = config_loader.config();
+        for (const auto &key : config.keys)
+        {
+            if (!key.enabled || key.key_index >= kDisplayCount)
+            {
+                continue;
+            }
+            displays[key.key_index].label = key.label.empty() ? displays[key.key_index].label : key.label;
+            if (!key.icon.empty())
+            {
+                std::string resolved;
+                if (ResolveIconPath(key.icon, resolved, sd_ready, spiffs_ready))
+                {
+                    displays[key.key_index].icon_path = resolved;
+                    displays[key.key_index].icon_available = true;
+                }
+            }
+        }
+    }
+    else
+    {
+        Serial.println(String("ConfigLoader: ") + config_loader.lastError().c_str());
+    }
+
+    for (uint8_t i = 0; i < kDisplayCount; ++i)
+    {
+        RenderKeyDisplay(i, displays[i]);
+        lv_timer_handler();
+        delay(10);
+    }
 
     lv_timer_handler();
 
