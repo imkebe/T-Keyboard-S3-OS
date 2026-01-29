@@ -9,6 +9,7 @@
 #include "../../libraries/T-Keyboard_S3_Drive/ConfigSchema.h"
 
 class ActionDispatcher;
+class USBHIDKeyboard;
 
 class ActionRegistry
 {
@@ -19,6 +20,7 @@ public:
 
     void Register(const std::string &type, Handler handler);
     void RegisterDefault(Handler handler);
+    void SetUsbHidKeyboard(USBHIDKeyboard *keyboard);
     void Dispatch(const ActionConfig &action, const ActionDispatcher &dispatcher) const;
 
 private:
@@ -26,4 +28,5 @@ private:
 
     std::unordered_map<std::string, Handler> handlers_{};
     Handler default_handler_{};
+    USBHIDKeyboard *keyboard_{nullptr};
 };

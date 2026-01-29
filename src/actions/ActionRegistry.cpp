@@ -1,6 +1,9 @@
 #include "ActionRegistry.h"
 
 #include "ActionDispatcher.h"
+#include "UsbHidMacroHandler.h"
+
+#include <USBHIDKeyboard.h>
 
 namespace
 {
@@ -27,6 +30,21 @@ ActionRegistry::ActionRegistry()
         logAction("composite handler invoked", action);
         dispatcher.DispatchActions(action.actions);
     });
+    Register("macro", [this](const ActionConfig &action, const ActionDispatcher &) {
+        logAction("macro handler invoked", action);
+        if (!keyboard_)
+        {
+            Serial.println("ActionRegistry: macro handler missing USBHIDKeyboard");
+            return;
+        }
+        UsbHidMacroHandler handler(*keyboard_);
+        handler.Execute(action.payload);
+    });
+}
+
+void ActionRegistry::SetUsbHidKeyboard(USBHIDKeyboard *keyboard)
+{
+    keyboard_ = keyboard;
 }
 
 void ActionRegistry::Register(const std::string &type, Handler handler)
