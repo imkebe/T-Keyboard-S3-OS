@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -41,6 +42,34 @@ struct ActionConfig
     uint32_t repeat = 1;
     bool enabled = true;
     std::vector<ActionConfig> actions;
+    struct MacroStep
+    {
+        enum class Type
+        {
+            Press,
+            Release,
+            Text,
+            Delay
+        };
+
+        Type type = Type::Text;
+        std::string value;
+        uint32_t delay_ms = 0;
+    };
+
+    struct HttpRequest
+    {
+        std::string method = "GET";
+        std::string url;
+        std::unordered_map<std::string, std::string> headers;
+        std::string body;
+        uint32_t timeout_ms = 5000;
+        uint32_t retries = 0;
+    };
+
+    std::vector<MacroStep> macro_steps;
+    HttpRequest http_request;
+    bool has_http_request = false;
 
     ValidationResult Validate() const;
 };

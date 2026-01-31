@@ -158,6 +158,52 @@ HttpRequestDefinition ParseHttpRequestDefinition(const std::string &payload)
     return definition;
 }
 
+HttpRequestDefinition BuildHttpRequestDefinition(const ActionConfig &action)
+{
+    bool has_http_details = action.has_http_request || !action.http_request.url.empty() ||
+                            !action.http_request.headers.empty() || !action.http_request.body.empty();
+    HttpRequestDefinition definition = has_http_details ? action.http_request : ParseHttpRequestDefinition(action.payload);
+    if (has_http_details && definition.url.empty() && !action.payload.empty())
+    {
+        HttpRequestDefinition payload_definition = ParseHttpRequestDefinition(action.payload);
+        if (definition.url.empty())
+        {
+            definition.url = payload_definition.url;
+        }
+        if (definition.method.empty())
+        {
+            definition.method = payload_definition.method;
+        }
+        if (definition.body.empty())
+        {
+            definition.body = payload_definition.body;
+        }
+        if (definition.headers.empty())
+        {
+            definition.headers = payload_definition.headers;
+        }
+        if (definition.timeout_ms == 0)
+        {
+            definition.timeout_ms = payload_definition.timeout_ms;
+        }
+        if (definition.retries == 0)
+        {
+            definition.retries = payload_definition.retries;
+        }
+    }
+    if (definition.retries > ConfigLimits::kMaxHttpRetries)
+    {
+        Serial.println(String("HttpActionHandler: clamping retries from ") + String(definition.retries) + " to " +
+                       String(ConfigLimits::kMaxHttpRetries));
+        definition.retries = ConfigLimits::kMaxHttpRetries;
+    }
+    if (definition.method.empty())
+    {
+        definition.method = "GET";
+    }
+    return definition;
+}
+
 bool IsSuccessStatus(int status_code)
 {
     return status_code >= 200 && status_code < 300;
@@ -166,7 +212,7 @@ bool IsSuccessStatus(int status_code)
 
 ActionStatus HandleHttpRequestAction(const ActionConfig &action)
 {
-    HttpRequestDefinition definition = ParseHttpRequestDefinition(action.payload);
+    HttpRequestDefinition definition = BuildHttpRequestDefinition(action);
     if (definition.url.empty())
     {
         return ActionStatus::Failure(-1, "http_request missing url");

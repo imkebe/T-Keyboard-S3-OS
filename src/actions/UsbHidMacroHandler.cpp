@@ -147,6 +147,15 @@ void UsbHidMacroHandler::Execute(const std::string &payload)
     ReleaseAll();
 }
 
+void UsbHidMacroHandler::Execute(const std::vector<ActionConfig::MacroStep> &steps)
+{
+    for (const auto &step : steps)
+    {
+        RunStep(step);
+    }
+    ReleaseAll();
+}
+
 void UsbHidMacroHandler::RunStep(const Step &step)
 {
     switch (step.type)
@@ -185,6 +194,52 @@ void UsbHidMacroHandler::RunStep(const Step &step)
         keyboard_.print(step.value.c_str());
         break;
     case StepType::Delay:
+        if (step.delay_ms > 0)
+        {
+            delay(step.delay_ms);
+        }
+        break;
+    }
+}
+
+void UsbHidMacroHandler::RunStep(const ActionConfig::MacroStep &step)
+{
+    switch (step.type)
+    {
+    case ActionConfig::MacroStep::Type::Press: {
+        auto keys = SplitKeys(step.value);
+        for (const auto &key : keys)
+        {
+            uint8_t keycode = 0;
+            if (!ResolveKey(key, keycode))
+            {
+                Serial.println(String("UsbHidMacroHandler: unknown key ") + key.c_str());
+                continue;
+            }
+            keyboard_.press(keycode);
+            pressed_keys_.insert(keycode);
+        }
+        break;
+    }
+    case ActionConfig::MacroStep::Type::Release: {
+        auto keys = SplitKeys(step.value);
+        for (const auto &key : keys)
+        {
+            uint8_t keycode = 0;
+            if (!ResolveKey(key, keycode))
+            {
+                Serial.println(String("UsbHidMacroHandler: unknown key ") + key.c_str());
+                continue;
+            }
+            keyboard_.release(keycode);
+            pressed_keys_.erase(keycode);
+        }
+        break;
+    }
+    case ActionConfig::MacroStep::Type::Text:
+        keyboard_.print(step.value.c_str());
+        break;
+    case ActionConfig::MacroStep::Type::Delay:
         if (step.delay_ms > 0)
         {
             delay(step.delay_ms);

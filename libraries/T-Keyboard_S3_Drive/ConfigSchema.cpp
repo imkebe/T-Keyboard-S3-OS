@@ -57,6 +57,14 @@ ValidationResult ActionConfig::Validate() const
                                 std::to_string(payload.size()) + ", max=" +
                                 std::to_string(ConfigLimits::kMaxMacroPayloadLength) + ")");
     }
+    if (type == "macro" && payload.empty() && macro_steps.empty())
+    {
+        result.errors.push_back("action.macro requires payload or steps (id=" + id + ")");
+    }
+    if (type == "http_request" && payload.empty() && http_request.url.empty())
+    {
+        result.errors.push_back("action.http_request requires url or payload (id=" + id + ")");
+    }
     return result;
 }
 

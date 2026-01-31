@@ -129,6 +129,13 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
         state.key_action_parent = Section::None;
         state.key_action_indent = 0;
     }
+    if ((state.section == Section::ActionSteps || state.section == Section::ActionHeaders) &&
+        indent <= state.action_detail_indent)
+    {
+        state.section = state.action_detail_parent;
+        state.action_detail_parent = Section::None;
+        state.action_detail_indent = 0;
+    }
 
     if (indent == 0 && trimmed == "config:")
     {
@@ -190,6 +197,135 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
         state.key_action_indent = static_cast<uint8_t>(indent);
         state.has_current_key_action = false;
         state.current_key_action = ActionConfig{};
+        return true;
+    }
+    if (trimmed == "steps:" &&
+        (state.section == Section::Actions || state.section == Section::ProfileActions || state.section == Section::KeyActions))
+    {
+        if (state.section == Section::KeyActions && !state.has_current_key_action)
+        {
+            errors.push_back("action.steps requires an active key action");
+            return false;
+        }
+        if (state.section != Section::KeyActions && !state.has_current_action)
+        {
+            errors.push_back("action.steps requires an active action");
+            return false;
+        }
+        state.action_detail_parent = state.section;
+        state.action_detail_indent = static_cast<uint8_t>(indent);
+        state.section = Section::ActionSteps;
+        return true;
+    }
+    if (trimmed == "headers:" &&
+        (state.section == Section::Actions || state.section == Section::ProfileActions || state.section == Section::KeyActions))
+    {
+        if (state.section == Section::KeyActions && !state.has_current_key_action)
+        {
+            errors.push_back("action.headers requires an active key action");
+            return false;
+        }
+        if (state.section != Section::KeyActions && !state.has_current_action)
+        {
+            errors.push_back("action.headers requires an active action");
+            return false;
+        }
+        state.action_detail_parent = state.section;
+        state.action_detail_indent = static_cast<uint8_t>(indent);
+        state.section = Section::ActionHeaders;
+        return true;
+    }
+
+    auto actionTargetForDetail = [&]() -> ActionConfig * {
+        if (state.action_detail_parent == Section::KeyActions)
+        {
+            return &state.current_key_action;
+        }
+        return &state.current_action;
+    };
+
+    if (state.section == Section::ActionSteps)
+    {
+        if (trimmed.rfind("-", 0) != 0)
+        {
+            errors.push_back("action.steps entries must be list items");
+            return false;
+        }
+        std::string remainder = trim(trimmed.substr(1));
+        if (remainder.empty())
+        {
+            errors.push_back("action.steps entries must include a field");
+            return false;
+        }
+        auto pos = remainder.find(':');
+        if (pos == std::string::npos)
+        {
+            errors.push_back("Malformed action step: " + remainder);
+            return false;
+        }
+        std::string field = trim(remainder.substr(0, pos));
+        std::string value = stripQuotes(trim(remainder.substr(pos + 1)));
+        ActionConfig *target = actionTargetForDetail();
+        ActionConfig::MacroStep step;
+        if (field == "press")
+        {
+            step.type = ActionConfig::MacroStep::Type::Press;
+            step.value = value;
+        }
+        else if (field == "release")
+        {
+            step.type = ActionConfig::MacroStep::Type::Release;
+            step.value = value;
+        }
+        else if (field == "text")
+        {
+            step.type = ActionConfig::MacroStep::Type::Text;
+            step.value = value;
+        }
+        else if (field == "delay_ms" || field == "delay")
+        {
+            uint32_t delay_ms = 0;
+            if (!parseUInt32(value, delay_ms))
+            {
+                errors.push_back("action.steps.delay_ms must be an integer");
+                return false;
+            }
+            step.type = ActionConfig::MacroStep::Type::Delay;
+            step.delay_ms = delay_ms;
+        }
+        else
+        {
+            errors.push_back("Unknown action step: " + field);
+            return false;
+        }
+        target->macro_steps.push_back(step);
+        return true;
+    }
+
+    if (state.section == Section::ActionHeaders)
+    {
+        if (trimmed.rfind("-", 0) != 0)
+        {
+            errors.push_back("action.headers entries must be list items");
+            return false;
+        }
+        std::string remainder = trim(trimmed.substr(1));
+        if (remainder.empty())
+        {
+            errors.push_back("action.headers entries must include a field");
+            return false;
+        }
+        auto pos = remainder.find(':');
+        if (pos == std::string::npos)
+        {
+            errors.push_back("Malformed header entry: " + remainder);
+            return false;
+        }
+        std::string field = trim(remainder.substr(0, pos));
+        std::string value = stripQuotes(trim(remainder.substr(pos + 1)));
+        ActionConfig *target = actionTargetForDetail();
+        target->http_request.headers[field] = value;
+        target->has_http_request = true;
         return true;
     }
 
@@ -330,6 +466,43 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
             {
                 state.current_key_action.payload = value;
             }
+            else if (field == "method")
+            {
+                state.current_key_action.http_request.method = value;
+                state.current_key_action.has_http_request = true;
+            }
+            else if (field == "url")
+            {
+                state.current_key_action.http_request.url = value;
+                state.current_key_action.has_http_request = true;
+            }
+            else if (field == "body")
+            {
+                state.current_key_action.http_request.body = value;
+                state.current_key_action.has_http_request = true;
+            }
+            else if (field == "timeout" || field == "timeout_ms")
+            {
+                uint32_t timeout_ms = 0;
+                if (!parseUInt32(value, timeout_ms))
+                {
+                    errors.push_back("action.timeout_ms must be an integer");
+                    return false;
+                }
+                state.current_key_action.http_request.timeout_ms = timeout_ms;
+                state.current_key_action.has_http_request = true;
+            }
+            else if (field == "retries" || field == "retry")
+            {
+                uint32_t retries = 0;
+                if (!parseUInt32(value, retries))
+                {
+                    errors.push_back("action.retries must be an integer");
+                    return false;
+                }
+                state.current_key_action.http_request.retries = retries;
+                state.current_key_action.has_http_request = true;
+            }
             else if (field == "delay_ms")
             {
                 uint32_t delay_ms = 0;
@@ -393,6 +566,43 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
             else if (field == "payload")
             {
                 state.current_action.payload = value;
+            }
+            else if (field == "method")
+            {
+                state.current_action.http_request.method = value;
+                state.current_action.has_http_request = true;
+            }
+            else if (field == "url")
+            {
+                state.current_action.http_request.url = value;
+                state.current_action.has_http_request = true;
+            }
+            else if (field == "body")
+            {
+                state.current_action.http_request.body = value;
+                state.current_action.has_http_request = true;
+            }
+            else if (field == "timeout" || field == "timeout_ms")
+            {
+                uint32_t timeout_ms = 0;
+                if (!parseUInt32(value, timeout_ms))
+                {
+                    errors.push_back("action.timeout_ms must be an integer");
+                    return false;
+                }
+                state.current_action.http_request.timeout_ms = timeout_ms;
+                state.current_action.has_http_request = true;
+            }
+            else if (field == "retries" || field == "retry")
+            {
+                uint32_t retries = 0;
+                if (!parseUInt32(value, retries))
+                {
+                    errors.push_back("action.retries must be an integer");
+                    return false;
+                }
+                state.current_action.http_request.retries = retries;
+                state.current_action.has_http_request = true;
             }
             else if (field == "delay_ms")
             {
@@ -534,7 +744,12 @@ void ConfigLoader::finalizeEntry(ParseState &state, ConfigRoot &out_config)
     }
     if (state.has_current_action)
     {
-        if (state.section == Section::ProfileActions)
+        Section action_section = state.section;
+        if (action_section == Section::ActionSteps || action_section == Section::ActionHeaders)
+        {
+            action_section = state.action_detail_parent;
+        }
+        if (action_section == Section::ProfileActions)
         {
             state.current_profile.actions.push_back(state.current_action);
         }
