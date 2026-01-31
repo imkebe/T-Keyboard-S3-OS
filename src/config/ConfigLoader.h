@@ -32,6 +32,8 @@ private:
         ProfileKeys,
         ProfileActions,
         KeyActions,
+        ActionSteps,
+        ActionHeaders,
     };
 
     struct ParseState
@@ -47,6 +49,8 @@ private:
         bool has_current_profile = false;
         Section key_action_parent = Section::None;
         uint8_t key_action_indent = 0;
+        Section action_detail_parent = Section::None;
+        uint8_t action_detail_indent = 0;
     };
 
     bool loadFromSd(ConfigRoot &out_config, std::vector<std::string> &errors);

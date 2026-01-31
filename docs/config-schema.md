@@ -28,7 +28,11 @@ profiles:
             payload: "A"
           - id: "multi-http"
             type: "http_request"
-            payload: "https://example.com"
+            url: "https://example.com"
+            method: "POST"
+            headers:
+              - Content-Type: "application/json"
+            body: "{\"message\":\"hello\"}"
     actions:
       - id: "layer-1"
         type: "layer"
@@ -36,6 +40,13 @@ profiles:
         delay_ms: 0
         repeat: 1
         enabled: true
+      - id: "macro-1"
+        type: "macro"
+        steps:
+          - press: "CTRL"
+          - text: "hello"
+          - delay_ms: 100
+          - release: "CTRL"
 ```
 
 ### `config`
@@ -72,6 +83,13 @@ profiles:
 | `id` | string | ✅ | Unique identifier for the action. |
 | `type` | string | ✅ | Action type. Allowed values: `hid_key`, `ble_key`, `http_request`, `composite`, `macro`, `media`, `keycode`, `layer`, `system`, `custom`, `profile_switch`. |
 | `payload` | string | ❌ | Action payload, such as a macro string or keycode. |
+| `steps` | array | ❌ | Macro steps for `macro` actions. Each entry contains `press`, `release`, `text`, or `delay_ms`. |
+| `method` | string | ❌ | HTTP method for `http_request` actions. Defaults to `GET`. |
+| `url` | string | ❌ | HTTP URL for `http_request` actions. |
+| `headers` | array | ❌ | HTTP headers for `http_request` actions. Each entry uses `Header-Name: value`. |
+| `body` | string | ❌ | HTTP body for `http_request` actions. |
+| `timeout` | integer | ❌ | HTTP timeout in milliseconds for `http_request` actions. |
+| `retries` | integer | ❌ | HTTP retry count for `http_request` actions. |
 | `delay_ms` | integer | ❌ | Optional delay before executing the action. Defaults to `0`. |
 | `repeat` | integer | ❌ | Optional repetition count. Defaults to `1`. |
 | `enabled` | boolean | ❌ | Enables or disables the action. Defaults to `true`. |

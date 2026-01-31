@@ -6,12 +6,15 @@
 
 #include <USBHIDKeyboard.h>
 
+#include "../../libraries/T-Keyboard_S3_Drive/ConfigSchema.h"
+
 class UsbHidMacroHandler
 {
 public:
     explicit UsbHidMacroHandler(USBHIDKeyboard &keyboard);
 
     void Execute(const std::string &payload);
+    void Execute(const std::vector<ActionConfig::MacroStep> &steps);
 
 private:
     enum class StepType
@@ -33,6 +36,7 @@ private:
     std::unordered_set<uint8_t> pressed_keys_;
 
     void RunStep(const Step &step);
+    void RunStep(const ActionConfig::MacroStep &step);
     void ReleaseAll();
     static std::vector<Step> ParseSteps(const std::string &payload);
     static std::vector<std::string> SplitSteps(const std::string &payload);

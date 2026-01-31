@@ -49,7 +49,14 @@ ActionRegistry::ActionRegistry()
             return ActionStatus::Ok();
         }
         UsbHidMacroHandler handler(*keyboard_);
-        handler.Execute(action.payload);
+        if (!action.macro_steps.empty())
+        {
+            handler.Execute(action.macro_steps);
+        }
+        else
+        {
+            handler.Execute(action.payload);
+        }
         return ActionStatus::Ok();
     });
 }

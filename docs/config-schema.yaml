@@ -21,7 +21,11 @@ profiles:
             payload: "A"
           - id: "multi-http"
             type: "http_request"
-            payload: "https://example.com"
+            url: "https://example.com"
+            method: "POST"
+            headers:
+              - Content-Type: "application/json"
+            body: "{\"message\":\"hello\"}"
     actions:
       - id: "layer-1"
         type: "layer"
@@ -29,3 +33,10 @@ profiles:
         delay_ms: 0
         repeat: 1
         enabled: true
+      - id: "macro-1"
+        type: "macro"
+        steps:
+          - press: "CTRL"
+          - text: "hello"
+          - delay_ms: 100
+          - release: "CTRL"
