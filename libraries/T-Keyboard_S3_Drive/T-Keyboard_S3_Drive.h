@@ -9,6 +9,8 @@
  */
 #pragma once
 
+#include "KeyEventManager.h"
+
 enum
 {
     N085_Initialize = 0,
@@ -28,6 +30,7 @@ void Key2_External_Interrupt(void);
 void Key3_External_Interrupt(void);
 void Key4_External_Interrupt(void);
 uint8_t T_Keyboard_S3_Key_Trigger(void);
+void T_Keyboard_S3_Set_Key_Debounce(uint32_t debounce_ms);
 
 extern bool Key1_Flag;
 extern bool Key2_Flag;

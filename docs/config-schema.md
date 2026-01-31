@@ -7,6 +7,7 @@ This document defines the versioned YAML configuration schema used to describe k
 ```yaml
 config:
   version: 1
+  debounce_ms: 30
 keys:
   - id: "key-1"
     key_index: 0
@@ -25,6 +26,7 @@ actions:
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `version` | integer | ✅ | Schema version. Only `1` is currently supported. |
+| `debounce_ms` | integer | ❌ | Key debounce duration in milliseconds. Defaults to `30`. |
 
 ### `keys[]`
 | Field | Type | Required | Description |

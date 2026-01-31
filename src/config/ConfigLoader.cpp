@@ -140,6 +140,17 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
                 out_config.version = version;
                 return true;
             }
+            if (field == "debounce_ms")
+            {
+                uint32_t debounce_ms = 0;
+                if (!parseUInt32(value, debounce_ms))
+                {
+                    errors.push_back("config.debounce_ms must be an integer");
+                    return false;
+                }
+                out_config.debounce_ms = debounce_ms;
+                return true;
+            }
 
             errors.push_back("Unknown config field: " + field);
             return false;
