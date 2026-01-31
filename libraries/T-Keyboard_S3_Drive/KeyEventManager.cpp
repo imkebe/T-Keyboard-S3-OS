@@ -99,6 +99,8 @@ uint8_t KeyEventManager::EventIdForMask(uint8_t mask) const
         return 6;
     case 0x06:
         return 7;
+    case 0x09:
+        return 10;
     case 0x0C:
         return 9;
     case 0x01:

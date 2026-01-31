@@ -20,6 +20,7 @@ const std::unordered_set<std::string> &ConfigRoot::AllowedActionTypes()
         "layer",
         "system",
         "custom",
+        "profile_switch",
     };
     return types;
 }
@@ -52,13 +53,9 @@ ValidationResult KeyConfig::Validate() const
     return result;
 }
 
-ValidationResult ConfigRoot::Validate() const
+ValidationResult ProfileConfig::Validate() const
 {
     ValidationResult result;
-    if (version != 1)
-    {
-        result.errors.push_back("config.version must be 1");
-    }
 
     std::unordered_set<std::string> action_ids;
     for (const auto &action : actions)
@@ -93,4 +90,80 @@ ValidationResult ConfigRoot::Validate() const
     }
 
     return result;
+}
+
+ValidationResult ConfigRoot::Validate() const
+{
+    ValidationResult result;
+    if (version != 1)
+    {
+        result.errors.push_back("config.version must be 1");
+    }
+
+    if (profiles.empty())
+    {
+        ProfileConfig base_profile;
+        base_profile.keys = keys;
+        base_profile.actions = actions;
+        auto base_result = base_profile.Validate();
+        result.errors.insert(result.errors.end(), base_result.errors.begin(), base_result.errors.end());
+        if (!active_profile.empty())
+        {
+            result.errors.push_back("config.active_profile requires profiles");
+        }
+        return result;
+    }
+
+    std::unordered_set<std::string> profile_ids;
+    for (const auto &profile : profiles)
+    {
+        if (profile.id.empty())
+        {
+            result.errors.push_back("profile.id is required");
+        }
+        else if (!profile_ids.insert(profile.id).second)
+        {
+            result.errors.push_back("profile.id values must be unique");
+        }
+
+        auto profile_result = profile.Validate();
+        result.errors.insert(result.errors.end(), profile_result.errors.begin(), profile_result.errors.end());
+    }
+
+    if (!active_profile.empty() && !FindProfile(active_profile))
+    {
+        result.errors.push_back("config.active_profile must reference an existing profile.id");
+    }
+
+    return result;
+}
+
+const ProfileConfig *ConfigRoot::FindProfile(const std::string &profile_id) const
+{
+    for (const auto &profile : profiles)
+    {
+        if (profile.id == profile_id)
+        {
+            return &profile;
+        }
+    }
+    return nullptr;
+}
+
+const ProfileConfig *ConfigRoot::ActiveProfile() const
+{
+    if (profiles.empty())
+    {
+        return nullptr;
+    }
+
+    if (!active_profile.empty())
+    {
+        if (const auto *profile = FindProfile(active_profile))
+        {
+            return profile;
+        }
+    }
+
+    return &profiles.front();
 }

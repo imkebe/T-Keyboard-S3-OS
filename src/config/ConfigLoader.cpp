@@ -15,6 +15,20 @@ const std::string &ConfigLoader::lastError() const
     return last_error_;
 }
 
+bool ConfigLoader::SetActiveProfile(const std::string &profile_id)
+{
+    if (config_.profiles.empty())
+    {
+        return false;
+    }
+    if (!config_.FindProfile(profile_id))
+    {
+        return false;
+    }
+    config_.active_profile = profile_id;
+    return true;
+}
+
 bool ConfigLoader::reloadConfig()
 {
     std::vector<std::string> errors;
@@ -101,28 +115,59 @@ bool ConfigLoader::loadFromFile(fs::FS &fs, const char *path, ConfigRoot &out_co
 
 bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigRoot &out_config, std::vector<std::string> &errors)
 {
+    const size_t indent = line.find_first_not_of(" \t");
     std::string trimmed = trim(line);
     if (trimmed.empty() || trimmed.front() == '#')
     {
         return true;
     }
 
-    if (trimmed == "config:")
+    if (indent == 0 && trimmed == "config:")
     {
         finalizeParse(state, out_config);
         state.section = Section::Config;
         return true;
     }
-    if (trimmed == "keys:")
+    if (indent == 0 && trimmed == "keys:")
     {
         finalizeParse(state, out_config);
         state.section = Section::Keys;
         return true;
     }
-    if (trimmed == "actions:")
+    if (indent == 0 && trimmed == "actions:")
     {
         finalizeParse(state, out_config);
         state.section = Section::Actions;
+        return true;
+    }
+    if (indent == 0 && trimmed == "profiles:")
+    {
+        finalizeParse(state, out_config);
+        state.section = Section::Profiles;
+        return true;
+    }
+    if (indent >= 4 && trimmed == "keys:" &&
+        (state.section == Section::Profiles || state.section == Section::ProfileActions || state.section == Section::ProfileKeys))
+    {
+        if (!state.has_current_profile)
+        {
+            errors.push_back("profiles.keys requires an active profile");
+            return false;
+        }
+        finalizeEntry(state, out_config);
+        state.section = Section::ProfileKeys;
+        return true;
+    }
+    if (indent >= 4 && trimmed == "actions:" &&
+        (state.section == Section::Profiles || state.section == Section::ProfileActions || state.section == Section::ProfileKeys))
+    {
+        if (!state.has_current_profile)
+        {
+            errors.push_back("profiles.actions requires an active profile");
+            return false;
+        }
+        finalizeEntry(state, out_config);
+        state.section = Section::ProfileActions;
         return true;
     }
 
@@ -151,13 +196,48 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
                 out_config.debounce_ms = debounce_ms;
                 return true;
             }
+            if (field == "active_profile")
+            {
+                out_config.active_profile = value;
+                return true;
+            }
 
             errors.push_back("Unknown config field: " + field);
             return false;
         }
 
-        if (state.section == Section::Keys)
+        if (state.section == Section::Profiles)
         {
+            if (!state.has_current_profile)
+            {
+                state.current_profile = ProfileConfig{};
+                state.has_current_profile = true;
+            }
+
+            if (field == "id")
+            {
+                state.current_profile.id = value;
+            }
+            else if (field == "label")
+            {
+                state.current_profile.label = value;
+            }
+            else
+            {
+                errors.push_back("Unknown profile field: " + field);
+                return false;
+            }
+
+            return true;
+        }
+
+        if (state.section == Section::Keys || state.section == Section::ProfileKeys)
+        {
+            if (state.section == Section::ProfileKeys && !state.has_current_profile)
+            {
+                errors.push_back("profile keys require an active profile");
+                return false;
+            }
             if (!state.has_current_key)
             {
                 state.current_key = KeyConfig{};
@@ -209,8 +289,13 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
             return true;
         }
 
-        if (state.section == Section::Actions)
+        if (state.section == Section::Actions || state.section == Section::ProfileActions)
         {
+            if (state.section == Section::ProfileActions && !state.has_current_profile)
+            {
+                errors.push_back("profile actions require an active profile");
+                return false;
+            }
             if (!state.has_current_action)
             {
                 state.current_action = ActionConfig{};
@@ -275,27 +360,33 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
     if (trimmed.rfind("-", 0) == 0)
     {
         std::string remainder = trim(trimmed.substr(1));
-        if (state.section == Section::Keys)
+        if ((state.section == Section::ProfileKeys || state.section == Section::ProfileActions) && indent <= 2)
         {
-            if (state.has_current_key)
-            {
-                out_config.keys.push_back(state.current_key);
-                state.current_key = KeyConfig{};
-            }
+            finalizeEntry(state, out_config);
+            finalizeProfile(state, out_config);
+            state.section = Section::Profiles;
+        }
+
+        if (state.section == Section::Profiles)
+        {
+            finalizeEntry(state, out_config);
+            finalizeProfile(state, out_config);
+            state.current_profile = ProfileConfig{};
+            state.has_current_profile = true;
+        }
+        else if (state.section == Section::Keys || state.section == Section::ProfileKeys)
+        {
+            finalizeEntry(state, out_config);
             state.has_current_key = true;
         }
-        else if (state.section == Section::Actions)
+        else if (state.section == Section::Actions || state.section == Section::ProfileActions)
         {
-            if (state.has_current_action)
-            {
-                out_config.actions.push_back(state.current_action);
-                state.current_action = ActionConfig{};
-            }
+            finalizeEntry(state, out_config);
             state.has_current_action = true;
         }
         else
         {
-            errors.push_back("List item found outside keys/actions section");
+            errors.push_back("List item found outside keys/actions/profiles section");
             return false;
         }
 
@@ -331,17 +422,47 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
 
 void ConfigLoader::finalizeParse(ParseState &state, ConfigRoot &out_config)
 {
+    finalizeEntry(state, out_config);
+    finalizeProfile(state, out_config);
+}
+
+void ConfigLoader::finalizeEntry(ParseState &state, ConfigRoot &out_config)
+{
     if (state.has_current_key)
     {
-        out_config.keys.push_back(state.current_key);
+        if (state.section == Section::ProfileKeys)
+        {
+            state.current_profile.keys.push_back(state.current_key);
+        }
+        else
+        {
+            out_config.keys.push_back(state.current_key);
+        }
         state.has_current_key = false;
         state.current_key = KeyConfig{};
     }
     if (state.has_current_action)
     {
-        out_config.actions.push_back(state.current_action);
+        if (state.section == Section::ProfileActions)
+        {
+            state.current_profile.actions.push_back(state.current_action);
+        }
+        else
+        {
+            out_config.actions.push_back(state.current_action);
+        }
         state.has_current_action = false;
         state.current_action = ActionConfig{};
+    }
+}
+
+void ConfigLoader::finalizeProfile(ParseState &state, ConfigRoot &out_config)
+{
+    if (state.has_current_profile)
+    {
+        out_config.profiles.push_back(state.current_profile);
+        state.has_current_profile = false;
+        state.current_profile = ProfileConfig{};
     }
 }
 

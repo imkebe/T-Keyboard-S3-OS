@@ -13,6 +13,8 @@
 #include "T-Keyboard_S3_Drive.h"
 #include "FastLED.h"
 #include "../../src/config/ConfigLoader.h"
+#include "../../src/actions/ActionDispatcher.h"
+#include "../../src/actions/ActionRegistry.h"
 
 #include <array>
 
@@ -37,6 +39,7 @@ namespace
 {
 constexpr const char *kMissingAssetLabel = LV_SYMBOL_WARNING "\nMissing";
 constexpr uint8_t kDisplayCount = 4;
+constexpr uint8_t kProfileSwitchEventId = 10;
 
 struct KeyDisplayData
 {
@@ -52,6 +55,14 @@ struct FsDriverContext
 
 FsDriverContext sd_context;
 FsDriverContext spiffs_context;
+ConfigLoader config_loader;
+ActionRegistry action_registry;
+ActionDispatcher action_dispatcher(action_registry);
+std::array<KeyDisplayData, kDisplayCount> displays;
+std::array<const KeyConfig *, kDisplayCount> key_bindings{};
+bool sd_ready = false;
+bool spiffs_ready = false;
+std::string active_profile_id;
 
 bool StartsWith(const std::string &value, const std::string &prefix)
 {
@@ -219,6 +230,169 @@ bool ResolveIconPath(const std::string &icon, std::string &out_lvgl_path, bool s
 
     out_lvgl_path = std::string(1, drive_letter) + ":" + path;
     return true;
+}
+
+const ProfileConfig *ResolveActiveProfile(const ConfigRoot &config)
+{
+    return config.ActiveProfile();
+}
+
+const std::vector<KeyConfig> &ResolveKeys(const ConfigRoot &config, const ProfileConfig *profile)
+{
+    return profile ? profile->keys : config.keys;
+}
+
+const std::vector<ActionConfig> &ResolveActions(const ConfigRoot &config, const ProfileConfig *profile)
+{
+    return profile ? profile->actions : config.actions;
+}
+
+const ActionConfig *FindActionById(const std::vector<ActionConfig> &actions, const std::string &action_id)
+{
+    for (const auto &action : actions)
+    {
+        if (action.id == action_id)
+        {
+            return &action;
+        }
+    }
+    return nullptr;
+}
+
+void BuildKeyBindings(const std::vector<KeyConfig> &keys)
+{
+    key_bindings.fill(nullptr);
+    for (const auto &key : keys)
+    {
+        if (key.key_index < kDisplayCount)
+        {
+            key_bindings[key.key_index] = &key;
+        }
+    }
+}
+
+void ApplyProfile(const ConfigRoot &config, const ProfileConfig *profile)
+{
+    for (uint8_t i = 0; i < kDisplayCount; ++i)
+    {
+        displays[i].label = "Key " + std::to_string(i + 1);
+        displays[i].icon_path.clear();
+        displays[i].icon_available = false;
+    }
+
+    const auto &keys = ResolveKeys(config, profile);
+    BuildKeyBindings(keys);
+
+    for (const auto &key : keys)
+    {
+        if (!key.enabled || key.key_index >= kDisplayCount)
+        {
+            continue;
+        }
+        displays[key.key_index].label = key.label.empty() ? displays[key.key_index].label : key.label;
+        if (!key.icon.empty())
+        {
+            std::string resolved;
+            if (ResolveIconPath(key.icon, resolved, sd_ready, spiffs_ready))
+            {
+                displays[key.key_index].icon_path = resolved;
+                displays[key.key_index].icon_available = true;
+            }
+        }
+    }
+
+    for (uint8_t i = 0; i < kDisplayCount; ++i)
+    {
+        RenderKeyDisplay(i, displays[i]);
+        lv_timer_handler();
+        delay(10);
+    }
+}
+
+bool SwitchToProfileId(const std::string &profile_id)
+{
+    if (!config_loader.SetActiveProfile(profile_id))
+    {
+        return false;
+    }
+    active_profile_id = profile_id;
+    ApplyProfile(config_loader.config(), ResolveActiveProfile(config_loader.config()));
+    return true;
+}
+
+bool CycleProfile()
+{
+    const auto &config = config_loader.config();
+    if (config.profiles.empty())
+    {
+        return false;
+    }
+
+    size_t current_index = 0;
+    const auto *active = ResolveActiveProfile(config);
+    if (active)
+    {
+        for (size_t i = 0; i < config.profiles.size(); ++i)
+        {
+            if (config.profiles[i].id == active->id)
+            {
+                current_index = i;
+                break;
+            }
+        }
+    }
+
+    size_t next_index = (current_index + 1) % config.profiles.size();
+    return SwitchToProfileId(config.profiles[next_index].id);
+}
+
+ActionStatus HandleProfileSwitchAction(const ActionConfig &action, const ActionDispatcher &)
+{
+    if (action.payload.empty())
+    {
+        return ActionStatus::Failure(-1, "profile_switch payload is required");
+    }
+    if (action.payload == "next" || action.payload == "cycle")
+    {
+        return CycleProfile() ? ActionStatus::Ok() : ActionStatus::Failure(-1, "No profiles to cycle");
+    }
+    return SwitchToProfileId(action.payload) ? ActionStatus::Ok() : ActionStatus::Failure(-1, "Unknown profile id");
+}
+
+void DispatchKeyBinding(uint8_t key_index)
+{
+    if (key_index >= kDisplayCount)
+    {
+        return;
+    }
+
+    const KeyConfig *key = key_bindings[key_index];
+    if (!key || !key->enabled)
+    {
+        return;
+    }
+
+    const auto &config = config_loader.config();
+    const auto *profile = ResolveActiveProfile(config);
+    const auto &actions = ResolveActions(config, profile);
+
+    if (!key->actions.empty())
+    {
+        action_dispatcher.DispatchActions(key->actions);
+        return;
+    }
+
+    if (!key->action_id.empty())
+    {
+        if (const auto *action = FindActionById(actions, key->action_id))
+        {
+            action_dispatcher.DispatchAction(*action);
+        }
+        else
+        {
+            Serial.println(String("ConfigLoader: Unknown action_id ") + key->action_id.c_str());
+        }
+    }
 }
 
 void RenderKeyDisplay(uint8_t screen_index, const KeyDisplayData &data)
@@ -538,8 +712,8 @@ void setup()
 
     static lv_fs_drv_t sd_driver;
     static lv_fs_drv_t spiffs_driver;
-    bool sd_ready = SD.begin();
-    bool spiffs_ready = SPIFFS.begin();
+    sd_ready = SD.begin();
+    spiffs_ready = SPIFFS.begin();
     if (sd_ready)
     {
         sd_context.fs = &SD;
@@ -551,44 +725,24 @@ void setup()
         RegisterLvglFsDriver('F', spiffs_context, spiffs_driver);
     }
 
-    std::array<KeyDisplayData, kDisplayCount> displays;
-    for (uint8_t i = 0; i < kDisplayCount; ++i)
-    {
-        displays[i].label = "Key " + std::to_string(i + 1);
-    }
+    action_registry.Register("profile_switch", HandleProfileSwitchAction);
 
-    ConfigLoader config_loader;
     if (config_loader.reloadConfig())
     {
         const auto &config = config_loader.config();
-        for (const auto &key : config.keys)
+        T_Keyboard_S3_Set_Key_Debounce(config.debounce_ms);
+        const auto *profile = ResolveActiveProfile(config);
+        if (profile)
         {
-            if (!key.enabled || key.key_index >= kDisplayCount)
-            {
-                continue;
-            }
-            displays[key.key_index].label = key.label.empty() ? displays[key.key_index].label : key.label;
-            if (!key.icon.empty())
-            {
-                std::string resolved;
-                if (ResolveIconPath(key.icon, resolved, sd_ready, spiffs_ready))
-                {
-                    displays[key.key_index].icon_path = resolved;
-                    displays[key.key_index].icon_available = true;
-                }
-            }
+            active_profile_id = profile->id;
         }
+        ApplyProfile(config, profile);
     }
     else
     {
         Serial.println(String("ConfigLoader: ") + config_loader.lastError().c_str());
-    }
-
-    for (uint8_t i = 0; i < kDisplayCount; ++i)
-    {
-        RenderKeyDisplay(i, displays[i]);
-        lv_timer_handler();
-        delay(10);
+        ConfigRoot fallback;
+        ApplyProfile(fallback, nullptr);
     }
 
     lv_timer_handler();
@@ -621,6 +775,16 @@ void loop()
 {
     lv_timer_handler();
     // delay(5);
+
+    uint8_t key_event = T_Keyboard_S3_Key_Trigger();
+    if (key_event == kProfileSwitchEventId)
+    {
+        CycleProfile();
+    }
+    else if (key_event >= 1 && key_event <= kDisplayCount)
+    {
+        DispatchKeyBinding(static_cast<uint8_t>(key_event - 1));
+    }
 
     WS2812B_KEY_Lvgl_Loop();
 }

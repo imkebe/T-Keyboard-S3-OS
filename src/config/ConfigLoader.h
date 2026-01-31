@@ -19,6 +19,7 @@ public:
 
     const ConfigRoot &config() const;
     const std::string &lastError() const;
+    bool SetActiveProfile(const std::string &profile_id);
 
 private:
     enum class Section
@@ -27,6 +28,9 @@ private:
         Config,
         Keys,
         Actions,
+        Profiles,
+        ProfileKeys,
+        ProfileActions,
     };
 
     struct ParseState
@@ -34,8 +38,10 @@ private:
         Section section = Section::None;
         KeyConfig current_key;
         ActionConfig current_action;
+        ProfileConfig current_profile;
         bool has_current_key = false;
         bool has_current_action = false;
+        bool has_current_profile = false;
     };
 
     bool loadFromSd(ConfigRoot &out_config, std::vector<std::string> &errors);
@@ -44,6 +50,8 @@ private:
 
     bool parseLine(const std::string &line, ParseState &state, ConfigRoot &out_config, std::vector<std::string> &errors);
     void finalizeParse(ParseState &state, ConfigRoot &out_config);
+    void finalizeEntry(ParseState &state, ConfigRoot &out_config);
+    void finalizeProfile(ParseState &state, ConfigRoot &out_config);
 
     static std::string trim(const std::string &value);
     static std::string stripQuotes(const std::string &value);
