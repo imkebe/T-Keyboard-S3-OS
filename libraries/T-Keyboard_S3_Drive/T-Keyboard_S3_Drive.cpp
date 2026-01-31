@@ -16,6 +16,11 @@ bool Key2_Flag = false;
 bool Key3_Flag = false;
 bool Key4_Flag = false;
 
+namespace
+{
+KeyEventManager key_event_manager;
+}
+
 void Key1_External_Interrupt(void)
 {
     if (digitalRead(KEY1) == 0)
@@ -173,45 +178,10 @@ void T_Keyboard_S3_Key_Initialization(void)
 
 uint8_t T_Keyboard_S3_Key_Trigger(void)
 {
-    if ((Key1_Flag && Key2_Flag && Key3_Flag && Key4_Flag) == true)
-    {
-        return 8;
-    }
+    return key_event_manager.Update(millis());
+}
 
-    if ((Key1_Flag && Key2_Flag) == true)
-    {
-        return 5;
-    }
-    if ((Key1_Flag && Key3_Flag) == true)
-    {
-        return 6;
-    }
-    if ((Key2_Flag && Key3_Flag) == true)
-    {
-        return 7;
-    }
-    if ((Key3_Flag && Key4_Flag) == true)
-    {
-        return 9;
-    }
-
-
-    if (Key1_Flag == true)
-    {
-        return 1;
-    }
-    if (Key2_Flag == true)
-    {
-        return 2;
-    }
-    if (Key3_Flag == true)
-    {
-        return 3;
-    }
-    if (Key4_Flag == true)
-    {
-        return 4;
-    }
-
-    return 0;
+void T_Keyboard_S3_Set_Key_Debounce(uint32_t debounce_ms)
+{
+    key_event_manager.SetDebounceMs(debounce_ms);
 }

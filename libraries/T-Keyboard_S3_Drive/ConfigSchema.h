@@ -51,6 +51,7 @@ struct KeyConfig
 struct ConfigRoot
 {
     uint32_t version = 1;
+    uint32_t debounce_ms = 30;
     std::vector<KeyConfig> keys;
     std::vector<ActionConfig> actions;
 
