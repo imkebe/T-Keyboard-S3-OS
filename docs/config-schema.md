@@ -1,6 +1,6 @@
 # T-Keyboard S3 Configuration Schema (v1)
 
-This document defines the versioned YAML configuration schema used to describe key layouts and actions.
+This document defines the versioned YAML configuration schema used to describe key layouts and actions. See `docs/config-schema.yaml` for a canonical example.
 
 ## Root Object
 
@@ -23,6 +23,8 @@ profiles:
       - id: "layer-1"
         type: "layer"
         payload: "fn"
+        delay_ms: 0
+        repeat: 1
         enabled: true
 ```
 
@@ -32,6 +34,8 @@ profiles:
 | `version` | integer | ✅ | Schema version. Only `1` is currently supported. |
 | `debounce_ms` | integer | ❌ | Key debounce duration in milliseconds. Defaults to `30`. |
 | `active_profile` | string | ❌ | Active `profiles[].id`. Defaults to the first profile when omitted. |
+
+> **Note**: The loader also accepts `version`, `debounce_ms`, and `active_profile` at the root of the YAML file if the `config:` block is omitted.
 
 ### `profiles[]`
 | Field | Type | Required | Description |
@@ -57,6 +61,8 @@ profiles:
 | `id` | string | ✅ | Unique identifier for the action. |
 | `type` | string | ✅ | Action type. Allowed values: `hid_key`, `ble_key`, `http_request`, `composite`, `macro`, `media`, `keycode`, `layer`, `system`, `custom`, `profile_switch`. |
 | `payload` | string | ❌ | Action payload, such as a macro string or keycode. |
+| `delay_ms` | integer | ❌ | Optional delay before executing the action. Defaults to `0`. |
+| `repeat` | integer | ❌ | Optional repetition count. Defaults to `1`. |
 | `enabled` | boolean | ❌ | Enables or disables the action. Defaults to `true`. |
 
 ## Validation Rules
@@ -78,4 +84,4 @@ The schema maps directly to the following C++ structs:
 - `KeyConfig` → entries in `keys[]`.
 - `ActionConfig` → entries in `actions[]`.
 
-Validation behavior is implemented in the `Validate()` methods on each struct, with additional cross-field checks in `ConfigRoot::Validate()`.
+Validation behavior is implemented in `libraries/T-Keyboard_S3_Drive/ConfigSchema.h` via the `Validate()` methods on each struct, with additional cross-field checks in `ConfigRoot::Validate()`.
