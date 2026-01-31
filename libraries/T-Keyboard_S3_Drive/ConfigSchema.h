@@ -48,14 +48,29 @@ struct KeyConfig
     ValidationResult Validate() const;
 };
 
-struct ConfigRoot
+struct ProfileConfig
 {
-    uint32_t version = 1;
-    uint32_t debounce_ms = 30;
+    std::string id;
+    std::string label;
     std::vector<KeyConfig> keys;
     std::vector<ActionConfig> actions;
 
     ValidationResult Validate() const;
+};
+
+struct ConfigRoot
+{
+    uint32_t version = 1;
+    uint32_t debounce_ms = 30;
+    std::string active_profile;
+    std::vector<KeyConfig> keys;
+    std::vector<ActionConfig> actions;
+    std::vector<ProfileConfig> profiles;
+
+    ValidationResult Validate() const;
 
     static const std::unordered_set<std::string> &AllowedActionTypes();
+
+    const ProfileConfig *FindProfile(const std::string &profile_id) const;
+    const ProfileConfig *ActiveProfile() const;
 };
