@@ -1,0 +1,21 @@
+config:
+  version: 1
+  debounce_ms: 30
+  active_profile: "default"
+profiles:
+  - id: "default"
+    label: "Primary"
+    keys:
+      - id: "key-1"
+        key_index: 0
+        label: "Layer"
+        icon: "sd:/icons/layer.png"
+        action_id: "layer-1"
+        enabled: true
+    actions:
+      - id: "layer-1"
+        type: "layer"
+        payload: "fn"
+        delay_ms: 0
+        repeat: 1
+        enabled: true

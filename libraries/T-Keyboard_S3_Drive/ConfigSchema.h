@@ -70,6 +70,7 @@ struct ProfileConfig
 
 struct ConfigRoot
 {
+    static constexpr uint32_t kSchemaVersion = 1;
     uint32_t version = 1;
     uint32_t debounce_ms = 30;
     std::string active_profile;

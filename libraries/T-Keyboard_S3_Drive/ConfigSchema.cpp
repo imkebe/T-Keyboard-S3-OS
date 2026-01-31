@@ -113,9 +113,10 @@ ValidationResult ProfileConfig::Validate() const
 ValidationResult ConfigRoot::Validate() const
 {
     ValidationResult result;
-    if (version != 1)
+    if (version != kSchemaVersion)
     {
-        result.errors.push_back("config.version must be 1 (value=" + std::to_string(version) + ")");
+        result.errors.push_back("config.version must be " + std::to_string(kSchemaVersion) + " (value=" +
+                                std::to_string(version) + ")");
     }
 
     if (profiles.empty())
