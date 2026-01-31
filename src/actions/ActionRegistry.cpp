@@ -86,6 +86,7 @@ ActionStatus ActionRegistry::Dispatch(const ActionConfig &action, const ActionDi
 
 ActionStatus ActionRegistry::DefaultUnknownHandler(const ActionConfig &action, const ActionDispatcher &)
 {
-    Serial.println(String("ActionRegistry: unknown action type (skipping): ") + action.type.c_str());
+    Serial.println(String("ActionRegistry: error unknown action type (skipping): ") + action.type.c_str() +
+                   " id=" + (action.id.empty() ? "<unnamed>" : action.id.c_str()));
     return ActionStatus::Ok();
 }

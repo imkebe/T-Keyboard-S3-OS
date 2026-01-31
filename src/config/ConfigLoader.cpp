@@ -122,6 +122,14 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
         return true;
     }
 
+    if (state.section == Section::KeyActions && indent <= state.key_action_indent)
+    {
+        finalizeKeyAction(state);
+        state.section = state.key_action_parent;
+        state.key_action_parent = Section::None;
+        state.key_action_indent = 0;
+    }
+
     if (indent == 0 && trimmed == "config:")
     {
         finalizeParse(state, out_config);
@@ -168,6 +176,20 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
         }
         finalizeEntry(state, out_config);
         state.section = Section::ProfileActions;
+        return true;
+    }
+    if (trimmed == "actions:" && (state.section == Section::Keys || state.section == Section::ProfileKeys))
+    {
+        if (!state.has_current_key)
+        {
+            errors.push_back("key.actions requires an active key");
+            return false;
+        }
+        state.key_action_parent = state.section;
+        state.section = Section::KeyActions;
+        state.key_action_indent = static_cast<uint8_t>(indent);
+        state.has_current_key_action = false;
+        state.current_key_action = ActionConfig{};
         return true;
     }
 
@@ -289,6 +311,64 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
             return true;
         }
 
+        if (state.section == Section::KeyActions)
+        {
+            if (!state.has_current_key_action)
+            {
+                state.current_key_action = ActionConfig{};
+                state.has_current_key_action = true;
+            }
+            if (field == "id")
+            {
+                state.current_key_action.id = value;
+            }
+            else if (field == "type")
+            {
+                state.current_key_action.type = value;
+            }
+            else if (field == "payload")
+            {
+                state.current_key_action.payload = value;
+            }
+            else if (field == "delay_ms")
+            {
+                uint32_t delay_ms = 0;
+                if (!parseUInt32(value, delay_ms))
+                {
+                    errors.push_back("action.delay_ms must be an integer");
+                    return false;
+                }
+                state.current_key_action.delay_ms = delay_ms;
+            }
+            else if (field == "repeat")
+            {
+                uint32_t repeat = 0;
+                if (!parseUInt32(value, repeat))
+                {
+                    errors.push_back("action.repeat must be an integer");
+                    return false;
+                }
+                state.current_key_action.repeat = repeat;
+            }
+            else if (field == "enabled")
+            {
+                bool enabled = true;
+                if (!parseBool(value, enabled))
+                {
+                    errors.push_back("action.enabled must be true or false");
+                    return false;
+                }
+                state.current_key_action.enabled = enabled;
+            }
+            else
+            {
+                errors.push_back("Unknown action field: " + field);
+                return false;
+            }
+
+            return true;
+        }
+
         if (state.section == Section::Actions || state.section == Section::ProfileActions)
         {
             if (state.section == Section::ProfileActions && !state.has_current_profile)
@@ -384,6 +464,11 @@ bool ConfigLoader::parseLine(const std::string &line, ParseState &state, ConfigR
             finalizeEntry(state, out_config);
             state.has_current_action = true;
         }
+        else if (state.section == Section::KeyActions)
+        {
+            finalizeKeyAction(state);
+            state.has_current_key_action = true;
+        }
         else
         {
             errors.push_back("List item found outside keys/actions/profiles section");
@@ -428,9 +513,15 @@ void ConfigLoader::finalizeParse(ParseState &state, ConfigRoot &out_config)
 
 void ConfigLoader::finalizeEntry(ParseState &state, ConfigRoot &out_config)
 {
+    finalizeKeyAction(state);
     if (state.has_current_key)
     {
-        if (state.section == Section::ProfileKeys)
+        Section key_section = state.section;
+        if (key_section == Section::KeyActions)
+        {
+            key_section = state.key_action_parent;
+        }
+        if (key_section == Section::ProfileKeys)
         {
             state.current_profile.keys.push_back(state.current_key);
         }
@@ -463,6 +554,16 @@ void ConfigLoader::finalizeProfile(ParseState &state, ConfigRoot &out_config)
         out_config.profiles.push_back(state.current_profile);
         state.has_current_profile = false;
         state.current_profile = ProfileConfig{};
+    }
+}
+
+void ConfigLoader::finalizeKeyAction(ParseState &state)
+{
+    if (state.has_current_key_action)
+    {
+        state.current_key.actions.push_back(state.current_key_action);
+        state.has_current_key_action = false;
+        state.current_key_action = ActionConfig{};
     }
 }
 

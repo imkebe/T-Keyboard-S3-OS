@@ -67,6 +67,20 @@ ValidationResult KeyConfig::Validate() const
     {
         result.errors.push_back("key.id is required");
     }
+    std::unordered_set<std::string> action_ids;
+    for (const auto &action : actions)
+    {
+        auto action_result = action.Validate();
+        result.errors.insert(result.errors.end(), action_result.errors.begin(), action_result.errors.end());
+        if (!action.id.empty())
+        {
+            if (!action_ids.insert(action.id).second)
+            {
+                result.errors.push_back("key.actions.id values must be unique (key=" + id +
+                                        ", action_id=" + action.id + ")");
+            }
+        }
+    }
     return result;
 }
 

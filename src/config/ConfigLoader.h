@@ -31,6 +31,7 @@ private:
         Profiles,
         ProfileKeys,
         ProfileActions,
+        KeyActions,
     };
 
     struct ParseState
@@ -38,10 +39,14 @@ private:
         Section section = Section::None;
         KeyConfig current_key;
         ActionConfig current_action;
+        ActionConfig current_key_action;
         ProfileConfig current_profile;
         bool has_current_key = false;
         bool has_current_action = false;
+        bool has_current_key_action = false;
         bool has_current_profile = false;
+        Section key_action_parent = Section::None;
+        uint8_t key_action_indent = 0;
     };
 
     bool loadFromSd(ConfigRoot &out_config, std::vector<std::string> &errors);
@@ -52,6 +57,7 @@ private:
     void finalizeParse(ParseState &state, ConfigRoot &out_config);
     void finalizeEntry(ParseState &state, ConfigRoot &out_config);
     void finalizeProfile(ParseState &state, ConfigRoot &out_config);
+    void finalizeKeyAction(ParseState &state);
 
     static std::string trim(const std::string &value);
     static std::string stripQuotes(const std::string &value);

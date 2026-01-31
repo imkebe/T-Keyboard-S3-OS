@@ -19,6 +19,16 @@ profiles:
         icon: "sd:/icons/layer.png"
         action_id: "layer-1"
         enabled: true
+      - id: "key-2"
+        key_index: 1
+        label: "Multi"
+        actions:
+          - id: "multi-a"
+            type: "hid_key"
+            payload: "A"
+          - id: "multi-http"
+            type: "http_request"
+            payload: "https://example.com"
     actions:
       - id: "layer-1"
         type: "layer"
@@ -53,6 +63,7 @@ profiles:
 | `label` | string | ❌ | Human-friendly display name. |
 | `icon` | string | ❌ | Path to an icon asset on SD (`sd:/...`) or internal FS (`fs:/...`). |
 | `action_id` | string | ❌ | Reference to an `actions[].id`. If omitted, the key has no bound action. |
+| `actions` | array | ❌ | Inline actions executed in order when the key is pressed. |
 | `enabled` | boolean | ❌ | Enables or disables the key mapping. Defaults to `true`. |
 
 ### `actions[]`
@@ -73,6 +84,7 @@ profiles:
 - `actions[].id` values must be unique and non-empty within their profile.
 - `actions[].type` must be one of the allowed values.
 - If `keys[].action_id` is set, it must reference an existing `actions[].id` in the same profile.
+- Inline `keys[].actions[]` entries must include valid action definitions (including unique `id` values per key).
 - If `profiles[]` is omitted, `keys[]`/`actions[]` are read from the root object.
 
 ## Data Model Alignment
