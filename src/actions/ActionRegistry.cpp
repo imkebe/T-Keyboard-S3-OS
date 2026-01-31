@@ -41,6 +41,13 @@ ActionRegistry::ActionRegistry()
             Serial.println("ActionRegistry: macro handler missing USBHIDKeyboard");
             return ActionStatus::Failure(-1, "Missing USBHIDKeyboard");
         }
+        if (action.payload.size() > ConfigLimits::kMaxMacroPayloadLength)
+        {
+            Serial.println(String("ActionRegistry: macro payload too long for action ") +
+                           (action.id.empty() ? "<unnamed>" : action.id.c_str()) + " length=" +
+                           String(action.payload.size()) + " max=" + String(ConfigLimits::kMaxMacroPayloadLength));
+            return ActionStatus::Ok();
+        }
         UsbHidMacroHandler handler(*keyboard_);
         handler.Execute(action.payload);
         return ActionStatus::Ok();
@@ -79,6 +86,6 @@ ActionStatus ActionRegistry::Dispatch(const ActionConfig &action, const ActionDi
 
 ActionStatus ActionRegistry::DefaultUnknownHandler(const ActionConfig &action, const ActionDispatcher &)
 {
-    Serial.println(String("ActionRegistry: unknown action type (no-op): ") + action.type.c_str());
-    return ActionStatus::Failure(-1, "Unknown action type");
+    Serial.println(String("ActionRegistry: unknown action type (skipping): ") + action.type.c_str());
+    return ActionStatus::Ok();
 }

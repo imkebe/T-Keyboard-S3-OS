@@ -7,10 +7,20 @@
  */
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+namespace ConfigLimits
+{
+constexpr uint32_t kMaxActionDelayMs = 10000;
+constexpr uint32_t kMaxActionRepeat = 100;
+constexpr size_t kMaxMacroPayloadLength = 1024;
+constexpr uint32_t kMaxMacroDelayMs = 10000;
+constexpr uint32_t kMaxHttpRetries = 3;
+} // namespace ConfigLimits
 
 struct ValidationResult
 {
