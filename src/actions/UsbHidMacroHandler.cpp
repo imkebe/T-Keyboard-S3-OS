@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <unordered_map>
 
+#include "../../libraries/T-Keyboard_S3_Drive/ConfigSchema.h"
+
 namespace
 {
 const std::unordered_map<std::string, uint8_t> &KeyLookup()
@@ -240,7 +242,8 @@ std::vector<UsbHidMacroHandler::Step> UsbHidMacroHandler::ParseSteps(const std::
             uint32_t delay_ms = 0;
             if (!ParseDelay(value, delay_ms))
             {
-                Serial.println(String("UsbHidMacroHandler: invalid delay ") + value.c_str());
+                Serial.println(String("UsbHidMacroHandler: invalid delay ") + value.c_str() +
+                               " (max " + String(ConfigLimits::kMaxMacroDelayMs) + ")");
                 continue;
             }
             steps.push_back({StepType::Delay, {}, delay_ms});
@@ -348,6 +351,10 @@ bool UsbHidMacroHandler::ParseDelay(const std::string &value, uint32_t &out_dela
     char *end = nullptr;
     unsigned long parsed = std::strtoul(value.c_str(), &end, 10);
     if (end == value.c_str() || *end != '\0')
+    {
+        return false;
+    }
+    if (parsed > ConfigLimits::kMaxMacroDelayMs)
     {
         return false;
     }

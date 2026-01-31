@@ -38,7 +38,24 @@ ValidationResult ActionConfig::Validate() const
     }
     else if (ConfigRoot::AllowedActionTypes().count(type) == 0)
     {
-        result.errors.push_back("action.type must be one of the supported values");
+        result.errors.push_back("action.type must be one of the supported values (value=" + type + ")");
+    }
+    if (delay_ms > ConfigLimits::kMaxActionDelayMs)
+    {
+        result.errors.push_back("action.delay_ms exceeds max (id=" + id + ", value=" +
+                                std::to_string(delay_ms) + ", max=" +
+                                std::to_string(ConfigLimits::kMaxActionDelayMs) + ")");
+    }
+    if (repeat > ConfigLimits::kMaxActionRepeat)
+    {
+        result.errors.push_back("action.repeat exceeds max (id=" + id + ", value=" + std::to_string(repeat) +
+                                ", max=" + std::to_string(ConfigLimits::kMaxActionRepeat) + ")");
+    }
+    if (type == "macro" && payload.size() > ConfigLimits::kMaxMacroPayloadLength)
+    {
+        result.errors.push_back("action.payload macro length exceeds max (id=" + id + ", length=" +
+                                std::to_string(payload.size()) + ", max=" +
+                                std::to_string(ConfigLimits::kMaxMacroPayloadLength) + ")");
     }
     return result;
 }
@@ -66,7 +83,7 @@ ValidationResult ProfileConfig::Validate() const
         {
             if (!action_ids.insert(action.id).second)
             {
-                result.errors.push_back("action.id values must be unique");
+                result.errors.push_back("action.id values must be unique (duplicate=" + action.id + ")");
             }
         }
     }
@@ -80,12 +97,13 @@ ValidationResult ProfileConfig::Validate() const
         {
             if (!key_ids.insert(key.id).second)
             {
-                result.errors.push_back("key.id values must be unique");
+                result.errors.push_back("key.id values must be unique (duplicate=" + key.id + ")");
             }
         }
         if (!key.action_id.empty() && action_ids.count(key.action_id) == 0)
         {
-            result.errors.push_back("key.action_id must reference a known action.id");
+            result.errors.push_back("key.action_id must reference a known action.id (key=" + key.id +
+                                    ", action_id=" + key.action_id + ")");
         }
     }
 
@@ -97,7 +115,7 @@ ValidationResult ConfigRoot::Validate() const
     ValidationResult result;
     if (version != 1)
     {
-        result.errors.push_back("config.version must be 1");
+        result.errors.push_back("config.version must be 1 (value=" + std::to_string(version) + ")");
     }
 
     if (profiles.empty())
@@ -123,7 +141,7 @@ ValidationResult ConfigRoot::Validate() const
         }
         else if (!profile_ids.insert(profile.id).second)
         {
-            result.errors.push_back("profile.id values must be unique");
+            result.errors.push_back("profile.id values must be unique (duplicate=" + profile.id + ")");
         }
 
         auto profile_result = profile.Validate();
@@ -132,7 +150,8 @@ ValidationResult ConfigRoot::Validate() const
 
     if (!active_profile.empty() && !FindProfile(active_profile))
     {
-        result.errors.push_back("config.active_profile must reference an existing profile.id");
+        result.errors.push_back("config.active_profile must reference an existing profile.id (value=" +
+                                active_profile + ")");
     }
 
     return result;

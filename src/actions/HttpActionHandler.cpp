@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <sstream>
 
+#include <Arduino.h>
 #include <HTTPClient.h>
 #include <WiFiClient.h>
 
@@ -140,10 +141,18 @@ HttpRequestDefinition ParseHttpRequestDefinition(const std::string &payload)
         else if (field == "retries" || field == "retry")
         {
             uint32_t retries = 0;
-            if (ParseUInt32(value, retries))
+            if (!ParseUInt32(value, retries))
             {
-                definition.retries = retries;
+                Serial.println(String("HttpActionHandler: invalid retries value ") + value.c_str());
+                continue;
             }
+            if (retries > ConfigLimits::kMaxHttpRetries)
+            {
+                Serial.println(String("HttpActionHandler: clamping retries from ") + String(retries) + " to " +
+                               String(ConfigLimits::kMaxHttpRetries));
+                retries = ConfigLimits::kMaxHttpRetries;
+            }
+            definition.retries = retries;
         }
     }
     return definition;
