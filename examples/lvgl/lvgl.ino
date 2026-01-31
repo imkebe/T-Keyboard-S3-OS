@@ -46,6 +46,7 @@ struct KeyDisplayData
     std::string label;
     std::string icon_path;
     bool icon_available = false;
+    bool icon_requested = false;
 };
 
 struct FsDriverContext
@@ -278,6 +279,7 @@ void ApplyProfile(const ConfigRoot &config, const ProfileConfig *profile)
         displays[i].label = "Key " + std::to_string(i + 1);
         displays[i].icon_path.clear();
         displays[i].icon_available = false;
+        displays[i].icon_requested = false;
     }
 
     const auto &keys = ResolveKeys(config, profile);
@@ -293,6 +295,7 @@ void ApplyProfile(const ConfigRoot &config, const ProfileConfig *profile)
         if (!key.icon.empty())
         {
             std::string resolved;
+            displays[key.key_index].icon_requested = true;
             if (ResolveIconPath(key.icon, resolved, sd_ready, spiffs_ready))
             {
                 displays[key.key_index].icon_path = resolved;
@@ -416,7 +419,7 @@ void RenderKeyDisplay(uint8_t screen_index, const KeyDisplayData &data)
         lv_img_set_src(img, data.icon_path.c_str());
         lv_obj_align(img, LV_ALIGN_CENTER, 0, -6);
     }
-    else
+    else if (data.icon_requested)
     {
         lv_obj_t *missing = lv_label_create(root);
         lv_label_set_text(missing, kMissingAssetLabel);
@@ -426,7 +429,14 @@ void RenderKeyDisplay(uint8_t screen_index, const KeyDisplayData &data)
     lv_obj_t *label = lv_label_create(root);
     const char *label_text = data.label.empty() ? "Key" : data.label.c_str();
     lv_label_set_text(label, label_text);
-    lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -6);
+    if (data.icon_available || data.icon_requested)
+    {
+        lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -6);
+    }
+    else
+    {
+        lv_obj_align(label, LV_ALIGN_CENTER, 0, -6);
+    }
 }
 } // namespace
 
